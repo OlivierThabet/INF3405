@@ -1,0 +1,106 @@
+package server_package;
+
+import java.io.*;
+import java.net.*;
+import java.text.SimpleDateFormat;
+import java.util.*;
+
+public class ClientHandler extends Thread {
+    private Socket socket;
+    private Map<String, String> users;
+    private List<String> messageHistory;
+
+    private static final String USERS_FILE = "src/server_package/users.txt"; 
+    private static final String CHAT_HISTORY_FILE = "src/server_package/chat_history.txt"; 
+
+    public ClientHandler(Socket socket, Map<String, String> users, List<String> messageHistory) {
+        this.socket = socket;
+        this.users = users;
+        this.messageHistory = messageHistory;
+    }
+
+    @Override
+    public void run() {
+        String username = null;
+        try (DataInputStream in = new DataInputStream(socket.getInputStream());
+             DataOutputStream out = new DataOutputStream(socket.getOutputStream())) {
+
+            // Récupération du nom d'utilisateur et du mot de passe
+            username = in.readUTF();
+            String password = in.readUTF();
+
+            // Vérification des identifiants
+            if (users.containsKey(username)) {
+                if (!users.get(username).equals(password)) {
+                    out.writeUTF("Erreur: Mot de passe incorrect");
+                    return;
+                }
+            } else {
+                users.put(username, password);
+                saveUser(username, password);
+            }
+
+            out.writeUTF("Connexion réussie !");
+            System.out.println(username + " s'est connecté.");
+
+            // Envoi des 15 derniers messages au client
+            for (String msg : messageHistory.subList(Math.max(messageHistory.size() - 15, 0), messageHistory.size())) {
+                out.writeUTF(msg);
+            }
+
+            // Lire et enregistrer les nouveaux messages
+            while (true) {
+                String message = in.readUTF();
+
+                // Vérifier si l'utilisateur veut se déconnecter
+                if (message.equalsIgnoreCase("exit")) {
+                    System.out.println(username + " s'est déconnecté.");
+                    out.writeUTF("SERVER_CLOSED");
+                    break;
+                }
+
+                // Récupérer l'adresse IP et le port du client
+                String clientAddress = socket.getInetAddress().getHostAddress();
+                int clientPort = socket.getPort();
+
+                // Ajouter la date et l'heure au message
+                String timestamp = new SimpleDateFormat("yyyy-MM-dd@HH:mm:ss").format(new Date());
+
+                // Construire le message formaté
+                String formattedMessage = "[" + username + " - " + clientAddress + ":" + clientPort + " - " + timestamp + "]: " + message;
+
+                // Afficher le message sur le serveur
+                System.out.println(formattedMessage);
+
+                // Ajouter le message à l'historique
+                messageHistory.add(formattedMessage);
+                saveMessage(formattedMessage);
+            }
+        } catch (IOException ignored) {
+        } finally {
+            try {
+                if (socket != null) {
+                    socket.close();
+                }
+            } catch (IOException ignored) {}
+        }
+    }
+
+    private void saveUser(String username, String password) {
+        try (BufferedWriter bw = new BufferedWriter(new FileWriter(USERS_FILE, true))) {
+            bw.write(username + "," + password + "\n");
+            bw.flush();
+        } catch (IOException e) {
+            System.out.println("Erreur lors de l'écriture dans users.txt : " + e.getMessage());
+        }
+    }
+
+    private void saveMessage(String message) {
+        try (BufferedWriter bw = new BufferedWriter(new FileWriter(CHAT_HISTORY_FILE, true))) {
+            bw.write(message + "\n");
+            bw.flush();
+        } catch (IOException e) {
+            System.out.println("Erreur lors de l'écriture dans chat_history.txt : " + e.getMessage());
+        }
+    }
+}

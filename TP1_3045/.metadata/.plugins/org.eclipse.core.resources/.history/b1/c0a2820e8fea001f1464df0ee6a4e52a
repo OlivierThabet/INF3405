@@ -1,0 +1,134 @@
+/**
+ * Classe `Client` - Client d'un chat multi-utilisateurs
+ * 
+ * Cette classe implémente un client permettant de se connecter à un serveur de chat.
+ * Elle permet à l'utilisateur d'envoyer et de recevoir des messages en temps réel.
+ * 
+ 
+ * @auteurs: Olivier Thabet (2294559), Florence Giroux (2391006), Jad Chahbour (2256941)
+
+ */
+
+package client_package;
+
+import java.io.*;
+import java.net.*;
+import java.util.Scanner;
+
+public class Client {
+    public static void main(String[] args) {
+        try {
+        	//Demande à l'utilisateur d'entrer l'adresse IP du serveur et le port.
+            Scanner scanner = new Scanner(System.in);
+            scanner.nextLine();
+            String serverIP;
+            while (true) {
+        	    System.out.print("Entrez l'adresse IP du serveur: ");
+        	    serverIP = scanner.nextLine();
+
+        	    if (isValidIPAddress(serverIP)) {
+        	        break;
+        	    } else {
+        	        System.out.println("Erreur : Adresse IP invalide. Essayez encore.");
+        	    }
+        	}
+         	//Vérifie si le port entré est entre 5000 et 5050
+        	while (true) {
+        	    System.out.print("Entrez le port d'écoute (5000-5050): ");
+        	    try {
+        	        int port = Integer.parseInt(scanner.nextLine());
+
+        	        if (port >= 5000 && port <= 5050) {
+        	            break;
+        	        } else {
+        	            System.out.println("Erreur : Le port doit être entre 5000 et 5050.");
+        	        }
+        	    } catch (NumberFormatException e) {
+        	        System.out.println("Erreur : Le port doit être un nombre entre 5000 et 5050.");
+        	    }
+        	}
+            //Demande à l'utilisateur d'entrer son nom d'utiliseur + mot de passe ou de s'en créer un.
+            System.out.print("Nom d'utilisateur: ");
+            String username = scanner.nextLine();
+            System.out.print("Mot de passe: ");
+            String password = scanner.nextLine();
+            
+            //Établie la connexion du client avec le server et permet au client d'envoyer du texte au serveur et vice-versa.
+            Socket socket = new Socket(serverIP, port);
+            DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+            DataInputStream in = new DataInputStream(socket.getInputStream());
+            
+            //Envoie le nom d'utilisateur et son mdp au server dans ClientHandler.
+            out.writeUTF(username);
+            out.writeUTF(password);
+            
+            //Affiche la réponse du serveur après avoir reçu le username et mdp et l'avoir validé ou non.
+            String response = in.readUTF();
+            System.out.println(response);
+            
+            if (response.equals("Erreur: Mot de passe incorrect")) {
+                System.out.println("Connexion refusée.");
+
+            }
+            //Si la connexion est réussie, crée un thread pour recevoir les messages du serveur de manière non bloquante. 
+            Thread receiveThread = new Thread(() -> {
+                try {
+                    while (true) {
+                        String receivedMessage = in.readUTF();
+                        
+                        //Si le host ferme le serveur le client est déconnecté.
+                        if (receivedMessage.equals("SERVER_CLOSED")) {
+                            System.out.println("Déconnecté du serveur.");
+                            break;
+                        }
+                        System.out.println(receivedMessage);
+                    }
+                } catch (IOException e) {
+                    System.out.println("Connexion perdue avec le serveur.");
+                }
+            });
+            receiveThread.start();
+
+            //Boucle d'écriture et envoie de message au server.
+            while (true) {
+                String message = scanner.nextLine();
+                
+                //validation de la longueur du message.
+                if (message.length() > 200) {
+                    System.out.println("Erreur : Votre message dépasse 200 caractères. Veuillez le raccourcir.");
+                    continue;
+                }
+                //Si le message est `"exit" indique au server de déconnecter l'utilisateur
+                if (message.equalsIgnoreCase("exit")) {
+                    out.writeUTF("exit");
+                    System.out.println("Déconnexion...");
+                    break;
+                }
+                //envoie de notre message au serveur.
+                out.writeUTF(message);
+            }
+
+            scanner.close();
+            in.close();
+            out.close();
+            socket.close();
+            
+            //Gestion d'erreurs inattendues des flux de données ou des connexions réseau.
+        } catch (IOException e) {
+            System.out.println("Erreur : " + e.getMessage());
+        }
+    }
+
+    /**
+     * Vérifie si une adresse IP est valide en utilisant une expression régulière.
+     *
+     * @param ip L'adresse IP sous forme de chaîne de caractères.
+     * @return true si l'adresse IP est valide, false sinon.
+     */
+    
+    public static boolean isValidIPAddress(String ip) {
+    return ip.matches(
+        "^((25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)$"
+    );
+}}
+

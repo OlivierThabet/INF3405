@@ -1,0 +1,85 @@
+package server_package;
+
+import java.io.*;
+import java.net.*;
+import java.text.SimpleDateFormat;
+import java.util.*;
+
+public class ClientHandler extends Thread {
+    private Socket socket;
+    private Map<String, String> users;
+    private List<String> messageHistory;
+
+    private static final String USERS_FILE = "src/server_package/users.txt"; 
+    private static final String CHAT_HISTORY_FILE = "src/server_package/chat_history.txt"; 
+
+    public ClientHandler(Socket socket, Map<String, String> users, List<String> messageHistory) {
+        this.socket = socket;
+        this.users = users;
+        this.messageHistory = messageHistory;
+    }
+
+    @Override
+    public void run() {
+        try (DataInputStream in = new DataInputStream(socket.getInputStream());
+             DataOutputStream out = new DataOutputStream(socket.getOutputStream())) {
+
+            String username = in.readUTF();
+            String password = in.readUTF();
+
+            if (users.containsKey(username)) {
+                if (!users.get(username).equals(password)) {
+                    out.writeUTF("Erreur: Mot de passe incorrect");
+                    return;
+                }
+            } else {
+                users.put(username, password);
+                saveUser(username, password);
+            }
+
+            out.writeUTF("Connexion réussie !");
+            System.out.println(username + " s'est connecté.");
+
+            // Envoyer les 15 derniers messages au client
+            for (String msg : messageHistory.subList(Math.max(messageHistory.size() - 15, 0), messageHistory.size())) {
+                out.writeUTF(msg);
+            }
+
+            // Lire et stocker les nouveaux messages
+            while (true) {
+                String message = in.readUTF();
+
+                // Vérifier si l'utilisateur veut se déconnecter
+                if (message.equalsIgnoreCase("exit")) {
+                    System.out.println(username + " s'est déconnecté.");
+                    out.writeUTF("SERVER_CLOSED"); // Informe le client qu'il est déconnecté
+                    break;
+                }
+
+                String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+                String fullMessage = "[" + username + "] " + timestamp + " : " + message;
+
+                System.out.println(fullMessage);
+                messageHistory.add(fullMessage);
+                saveMessage(fullMessage);
+            }
+        } catch (IOException ignored) {
+        } finally {
+            try {
+                socket.close(); // Fermer proprement la connexion du client
+            } catch (IOException ignored) {}
+        }
+    }
+
+    private void saveUser(String username, String password) {
+        try (BufferedWriter bw = new BufferedWriter(new FileWriter(USERS_FILE, true))) {
+            bw.write(username + "," + password + "\n");
+        } catch (IOException ignored) {}
+    }
+
+    private void saveMessage(String message) {
+        try (BufferedWriter bw = new BufferedWriter(new FileWriter(CHAT_HISTORY_FILE, true))) {
+            bw.write(message + "\n");
+        } catch (IOException ignored) {}
+    }
+}

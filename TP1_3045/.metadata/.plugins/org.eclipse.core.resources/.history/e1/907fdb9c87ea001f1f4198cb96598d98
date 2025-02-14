@@ -1,0 +1,126 @@
+/**
+ * Classe `Server` - Serveur de chat multi-utilisateurs
+ * 
+ * Cette classe implémente un serveur permettant aux clients de se connecter et d'échanger des messages en temps réel.
+ * Chaque client est géré par un thread `ClientHandler`, ce qui permet une communication simultanée.
+ * 
+ * @auteurs: Olivier Thabet (2294559), Florence Giroux (2391006), Jad Chahbour (2256941)
+ * 
+ */
+package server_package;
+
+import java.io.*;
+import java.net.*;
+import java.util.*;
+
+public class Server {
+    private static final String USER_DB_FILE = "src/server_package/users.txt"; // Stockage des utilisateurs
+    private static final String CHAT_HISTORY_FILE = "src/server_package/chat_history.txt"; // Historique des messages
+    private static listener listener;
+    private static Map<String, String> users = new HashMap<>();
+    private static List<String> messageHistory = new LinkedList<>();
+
+    public static void main(String[] args) {
+        try {
+        	 Scanner scanner = new Scanner(System.in);
+             String serverIP;
+             int port;
+             
+             //Vérifie la validité de l'adresse IP
+             while (true) {
+            	    System.out.print("Entrez l'adresse IP du serveur: ");
+            	    serverIP = scanner.nextLine();
+
+            	    if (isValidIPAddress(serverIP)) {
+            	        break;
+            	    } else {
+            	        System.out.println("Erreur : Adresse IP invalide. Essayez encore.");
+            	    }
+            	}
+             	//Vérifie si le port entré est entre 5000 et 5050
+            	while (true) {
+            	    System.out.print("Entrez le port d'écoute (5000-5050): ");
+            	    try {
+            	        port = Integer.parseInt(scanner.nextLine());
+
+            	        if (port >= 5000 && port <= 5050) {
+            	            break;
+            	        } else {
+            	            System.out.println("Erreur : Le port doit être entre 5000 et 5050.");
+            	        }
+            	    } catch (NumberFormatException e) {
+            	        System.out.println("Erreur : Le port doit être un nombre entre 5000 et 5050.");
+            	    }
+            	}
+
+            scanner.close();
+            
+            //Place le contenue des fichiers users et chat_history dans users et message history pour y accéder plus rapidement.
+            loadUsers();
+            loadChatHistory();
+            
+            //Crée un sever socket et l'associe à l'adresse IP et port donnés en input.
+            listener = new listener();
+            listener.setReuseAddress(true);
+            listener.bind(new InetSocketAddress(serverIP, port));
+            System.out.println("Serveur en ligne sur " + serverIP + ":" + port);
+
+            //Crée un thread ClienHandler à chaque nouvelle connexion client au server, permet de gérer plusieurs connexions à la fois.
+            while (true) {
+                Socket clientSocket = listener.accept();
+                new ClientHandler(clientSocket, users, messageHistory).start();
+            }
+            //Permet de gérer toute erreur inattendu des flux de données ou des connexions réseau.
+        } catch (IOException e) {
+            System.err.println("Erreur lors du démarrage du serveur : " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Vérifie si une adresse IP est valide en utilisant une expression régulière.
+     *
+     * @param ip L'adresse IP sous forme de chaîne de caractères.
+     * @return true si l'adresse IP est valide, false sinon.
+     */
+    private static boolean isValidIPAddress(String ip) {
+        return ip.matches(
+            "^((25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)$"
+        );
+    }
+    
+    /**
+     * Charge les utilisateurs enregistrés depuis le fichier users.txt et les stocke en mémoire.
+     * 
+     * Lit chaque ligne du fichier, sépare le nom d'utilisateur et le mot de passe par une virgule,
+     * puis stocke ces informations dans l'attribut `users`.
+     */
+    private static void loadUsers() {
+        try (BufferedReader br = new BufferedReader(new FileReader(USER_DB_FILE))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                String[] parts = line.split(",");
+                if (parts.length == 2) {
+                    users.put(parts[0], parts[1]);
+                }
+            }
+        } catch (IOException e) {
+        	System.out.println("Erreur lors de la lecture du fichier : " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Charge l'historique des messages depuis le fichier chat_history.txt et les stocke en mémoire.
+     * 
+     * Chaque ligne du fichier est ajoutée à l'attribut `messageHistory`.
+     */
+    private static void loadChatHistory() {
+        try (BufferedReader br = new BufferedReader(new FileReader(CHAT_HISTORY_FILE))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                messageHistory.add(line);
+            }
+        } catch (IOException e) {
+        	System.out.println("Erreur lors de la lecture du fichier : " + e.getMessage());
+        }
+    }
+}

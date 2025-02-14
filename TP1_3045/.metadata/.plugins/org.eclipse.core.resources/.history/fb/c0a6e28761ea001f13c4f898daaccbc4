@@ -1,0 +1,89 @@
+package client_package;
+
+import java.io.*;
+import java.net.*;
+import java.util.Scanner;
+
+public class Client {
+    public static void main(String[] args) {
+        try {
+            Scanner scanner = new Scanner(System.in);
+            System.out.print("Entrez l'adresse IP du serveur: ");
+            String serverIP = scanner.nextLine();
+            System.out.print("Entrez le port (5000-5050): ");
+            int port = scanner.nextInt();
+            scanner.nextLine();
+            
+            System.out.print("Nom d'utilisateur: ");
+            String username = scanner.nextLine();
+            System.out.print("Mot de passe: ");
+            String password = scanner.nextLine();
+
+            // Connexion au serveur
+            Socket socket = new Socket(serverIP, port);
+            DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+            DataInputStream in = new DataInputStream(socket.getInputStream());
+
+            // Envoi des identifiants au serveur
+            out.writeUTF(username);
+            out.writeUTF(password);
+            
+            // Lire la réponse du serveur
+            String response = in.readUTF();
+            System.out.println("Réponse du serveur : " + response);
+            
+            if (response.equals("Erreur: Mot de passe incorrect")) {
+                System.out.println("Connexion refusée.");
+                scanner.close();
+                socket.close();
+                return;
+            }
+
+            // Démarrer un thread pour écouter les messages entrants
+            Thread receiveThread = new Thread(() -> {
+                try {
+                    while (true) {
+                        String receivedMessage = in.readUTF();
+                        if (receivedMessage.equals("SERVER_CLOSED")) {
+                            System.out.println("Déconnecté du serveur.");
+                            break;
+                        }
+                        System.out.println(receivedMessage);
+                    }
+                } catch (IOException e) {
+                    System.out.println("Connexion perdue avec le serveur.");
+                }
+            });
+            receiveThread.start();
+
+            // Boucle d'envoi de messages
+            while (true) {
+                System.out.print("> ");
+                String message = scanner.nextLine();
+                
+                // Si l'utilisateur tape "exit", il se déconnecte
+                if (message.equalsIgnoreCase("exit")) {
+                    out.writeUTF("exit");
+                    System.out.println("Déconnexion...");
+                    break;
+                }
+
+                if (message.length() > 200) {
+                    System.out.println("Message trop long (max 200 caractères) !");
+                    continue;
+                }
+
+                out.writeUTF(message);
+            }
+
+            // Fermeture des flux et du socket
+            scanner.close();
+            in.close();
+            out.close();
+            socket.close();
+            
+        } catch (IOException e) {
+            System.out.println("Erreur : " + e.getMessage());
+        }
+    }
+}
