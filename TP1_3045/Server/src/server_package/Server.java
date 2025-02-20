@@ -14,11 +14,13 @@ import java.net.*;
 import java.util.*;
 
 public class Server {
-    private static final String USER_DB_FILE = "src/server_package/users.txt"; // Stockage des utilisateurs
-    private static final String CHAT_HISTORY_FILE = "src/server_package/chat_history.txt"; // Historique des messages
+    private static final String USER_DB_FILE = "users.txt"; 
+    private static final String CHAT_HISTORY_FILE = "chat_history.txt"; 
     private static ServerSocket listener;
     private static Map<String, String> users = new HashMap<>();
     private static List<String> messageHistory = new LinkedList<>();
+    private static List<ClientHandler> clients = new ArrayList<>();
+
 
     public static void main(String[] args) {
         try {
@@ -68,7 +70,14 @@ public class Server {
             //Crée un thread ClienHandler à chaque nouvelle connexion client au server, permet de gérer plusieurs connexions à la fois.
             while (true) {
                 Socket clientSocket = listener.accept();
-                new ClientHandler(clientSocket, users, messageHistory).start();
+                ClientHandler clientHandler = new ClientHandler(clientSocket, users, messageHistory, clients);
+                
+             // Ajout du client à la liste des clients connectes
+                synchronized (clients) {
+                    clients.add(clientHandler); 
+                }
+                
+                clientHandler.start();
             }
             //Permet de gérer toute erreur inattendu des flux de données ou des connexions réseau.
         } catch (IOException e) {
@@ -93,8 +102,18 @@ public class Server {
      * 
      * Lit chaque ligne du fichier, sépare le nom d'utilisateur et le mot de passe par une virgule,
      * puis stocke ces informations dans l'attribut `users`.
+     * Si le fichier users.txt n existe pas on le cree.
      */
     private static void loadUsers() {
+    	File usersFile = new File(USER_DB_FILE);
+    	
+        if (!usersFile.exists()) {
+            try {
+            	usersFile.createNewFile();
+            } catch (IOException e) {
+                System.out.println("Erreur lors de la création de users.txt : " + e.getMessage());
+            }
+        }
         try (BufferedReader br = new BufferedReader(new FileReader(USER_DB_FILE))) {
             String line;
             while ((line = br.readLine()) != null) {
@@ -110,10 +129,19 @@ public class Server {
     
     /**
      * Charge l'historique des messages depuis le fichier chat_history.txt et les stocke en mémoire.
-     * 
      * Chaque ligne du fichier est ajoutée à l'attribut `messageHistory`.
+     * Si le fichier chat_history.txt n existe pas on le cree.
      */
     private static void loadChatHistory() {
+    	File chatHistory = new File(CHAT_HISTORY_FILE);
+
+        if (!chatHistory.exists()) {
+            try {
+            	chatHistory.createNewFile();
+            } catch (IOException e) {
+                System.out.println("Erreur lors de la création de chat_history.txt : " + e.getMessage());
+            }
+        }
         try (BufferedReader br = new BufferedReader(new FileReader(CHAT_HISTORY_FILE))) {
             String line;
             while ((line = br.readLine()) != null) {

@@ -19,14 +19,18 @@ public class ClientHandler extends Thread {
     private Socket socket;
     private Map<String, String> users;
     private List<String> messageHistory;
+    private List<ClientHandler> clients;
+    private DataOutputStream out;
 
-    private static final String USERS_FILE = "src/server_package/users.txt"; 
-    private static final String CHAT_HISTORY_FILE = "src/server_package/chat_history.txt"; 
+    private static final String USERS_FILE = "users.txt"; 
+    private static final String CHAT_HISTORY_FILE = "chat_history.txt"; 
 
-    public ClientHandler(Socket socket, Map<String, String> users, List<String> messageHistory) {
+    public ClientHandler(Socket socket, Map<String, String> users, List<String> messageHistory, List<ClientHandler> clients) {
         this.socket = socket;
         this.users = users;
         this.messageHistory = messageHistory;
+        this.clients = clients;
+        
     }
 
     @Override
@@ -36,7 +40,7 @@ public class ClientHandler extends Thread {
         	//Établi la communication server-client pour qu'ils puissent s'envoyer des messages.	
         	DataInputStream in = new DataInputStream(socket.getInputStream());
             DataOutputStream out = new DataOutputStream(socket.getOutputStream())) {
-        	
+        	 this.out = out;
         	//Attend les inputs du client pour son username et mdp.
             username = in.readUTF();
             String password = in.readUTF();
@@ -78,10 +82,10 @@ public class ClientHandler extends Thread {
                         username, clientAddress, clientPort, timestamp, message);
                 System.out.println(formattedMessage);
                 
-                //Ajoute le message envoyé dans la bdd d'historique de messages
+                //Ajoute le message envoyé dans la bdd d'historique de messages et l'envoie aux autres clients
                 messageHistory.add(formattedMessage);
                 saveMessage(formattedMessage);
-                out.writeUTF(formattedMessage);
+                broadcastMessage(formattedMessage);
             }
          //Permet de gérer toute erreur inattendu des flux de données ou des connexions réseau.
         } catch (IOException ignored) {
@@ -94,6 +98,11 @@ public class ClientHandler extends Thread {
                     socket.close();
                 }
             } catch (IOException ignored) {}
+            
+         // Supprime le client de la liste lors de la déconnexion    
+            synchronized (clients) {
+                clients.remove(this); 
+            }
         }
     }
 
@@ -118,7 +127,7 @@ public class ClientHandler extends Thread {
     /**
      * Sauvegarde un message dans le fichier `chat_history.txt`.
      *
-     * @param message Message à enregistrer, incluant le nom d'utilisateur, l'adresse IP et l'horodatage.
+     * @param message Message à enregistrer, incluant le nom d'utilisateur, l'adresse IP et le temps.
      */
     private void saveMessage(String message) {
         try (BufferedWriter bw = new BufferedWriter(new FileWriter(CHAT_HISTORY_FILE, true))) {
@@ -126,6 +135,27 @@ public class ClientHandler extends Thread {
             bw.flush();
         } catch (IOException e) {
             System.out.println("Erreur lors de l'écriture dans chat_history.txt : " + e.getMessage());
+        }
+    }
+    
+
+    /**
+     * Diffuse un message à tous les clients connectés.
+     * 
+     * Cette méthode envoie le message reçu à chaque client actuellement connecté,
+     * permettant ainsi la diffusion en temps réel des messages dans le chat.
+     * 
+     * @param message Le message formaté à diffuser aux clients.
+     */
+    private void broadcastMessage(String message) {
+        synchronized (clients) {
+            for (ClientHandler client : clients) {
+                try {
+                    client.out.writeUTF(message);
+                } catch (IOException e) {
+                    System.out.println("Erreur lors de l'envoi du message à un client : " + e.getMessage());
+                }
+            }
         }
     }
 }

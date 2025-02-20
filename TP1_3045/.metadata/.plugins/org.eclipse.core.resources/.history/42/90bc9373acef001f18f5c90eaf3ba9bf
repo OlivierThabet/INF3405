@@ -1,0 +1,131 @@
+/**
+ * Classe `ClientHandler` - Gère un client connecté au serveur de chat.
+ *
+ * Cette classe est un thread qui permet la gestion d'un client connecté en parallèle des autres.
+ * Elle permet l'authentification des utilisateurs, la réception et la transmission de messages,
+ * ainsi que la sauvegarde des utilisateurs et de l'historique des conversations.
+ *
+ *@auteurs: Olivier Thabet (2294559), Florence Giroux (2391006), Jad Chahbour (2256941)
+ */
+
+package server_package;
+
+import java.io.*;
+import java.net.*;
+import java.text.SimpleDateFormat;
+import java.util.*;
+
+public class ClientHandler extends Thread {
+    private Socket socket;
+    private Map<String, String> users;
+    private List<String> messageHistory;
+
+    private static final String USERS_FILE = "src/server_package/users.txt"; 
+    private static final String CHAT_HISTORY_FILE = "src/server_package/chat_history.txt"; 
+
+    public ClientHandler(Socket socket, Map<String, String> users, List<String> messageHistory) {
+        this.socket = socket;
+        this.users = users;
+        this.messageHistory = messageHistory;
+    }
+
+    @Override
+    public void run() {
+        String username = null;
+        try (
+        	//Établi la communication server-client pour qu'ils puissent s'envoyer des messages.	
+        	DataInputStream in = new DataInputStream(socket.getInputStream());
+            DataOutputStream out = new DataOutputStream(socket.getOutputStream())) {
+        	
+        	//Attend les inputs du client pour son username et mdp.
+            username = in.readUTF();
+            String password = in.readUTF();
+            
+            //Si le nom d'utilisateur existe déjà, vérifie que le bon mdp est entré sinon, crée un nouveau user et l'enregistre dans users.txt.
+            if (users.containsKey(username)) {
+                if (!users.get(username).equals(password)) {
+                    out.writeUTF("Erreur dans la saisie du mot de passe");
+                    return;
+                }
+            } else {
+                saveUser(username, password);
+                users.put(username, password);
+            }
+
+            out.writeUTF("Connexion réussie !");
+            System.out.println(username + " s'est connecté.");
+            
+            //Une fois l'utilisateur connecté, affiche les 15 derniers messages envoyés sur ce port.
+            for (String msg : messageHistory.subList(Math.max(messageHistory.size() - 15, 0), messageHistory.size())) {
+                out.writeUTF(msg);
+            }
+            
+            //Attend l'envoie de messages du client
+            while (true) {
+                String message = in.readUTF();
+               // Si le message est "exit" déconnecte l'utilisateur
+                if (message.equalsIgnoreCase("exit")) {
+                    System.out.println(username + " s'est déconnecté.");
+                    out.writeUTF("SERVER_CLOSED");
+                    break;
+                }
+                
+                //Prend les informations nécessaire pour afficher le message du client avec la bonne nomenclature.
+                String clientAddress = socket.getInetAddress().getHostAddress();
+                int clientPort = socket.getPort();
+                String timestamp = new SimpleDateFormat("yyyy-MM-dd@HH:mm:ss").format(new Date());  
+                String formattedMessage = String.format("[%s - %s:%d - %s]: %s",
+                        username, clientAddress, clientPort, timestamp, message);
+                System.out.println(formattedMessage);
+                
+                //Ajoute le message envoyé dans la bdd d'historique de messages
+                messageHistory.add(formattedMessage);
+                saveMessage(formattedMessage);
+                out.writeUTF(formattedMessage);
+            }
+         //Permet de gérer toute erreur inattendu des flux de données ou des connexions réseau.
+        } catch (IOException ignored) {
+        } 
+        
+        //Ferme la connexion entre le client et le server.
+        finally {
+            try {
+                if (socket != null) {
+                    socket.close();
+                }
+            } catch (IOException ignored) {}
+        }
+    }
+
+    /**
+     * Sauvegarde un nouvel utilisateur dans le fichier `users.txt` si celui-ci n'existe pas encore.
+     *
+     * @param username Nom d'utilisateur à enregistrer.
+     * @param password Mot de passe associé à l'utilisateur.
+     */
+    private void saveUser(String username, String password) {
+        if (users.containsKey(username)) {
+            return;
+        }
+        try (BufferedWriter bw = new BufferedWriter(new FileWriter(USERS_FILE, true))) {
+            bw.write(username + "," + password + "\n");
+            bw.flush();
+        } catch (IOException e) {
+            System.out.println("Erreur lors de l'écriture dans users.txt : " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Sauvegarde un message dans le fichier `chat_history.txt`.
+     *
+     * @param message Message à enregistrer, incluant le nom d'utilisateur, l'adresse IP et l'horodatage.
+     */
+    private void saveMessage(String message) {
+        try (BufferedWriter bw = new BufferedWriter(new FileWriter(CHAT_HISTORY_FILE, true))) {
+            bw.write(message + "\n");
+            bw.flush();
+        } catch (IOException e) {
+            System.out.println("Erreur lors de l'écriture dans chat_history.txt : " + e.getMessage());
+        }
+    }
+}
